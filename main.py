@@ -6,6 +6,7 @@ Endpoints:
   POST /api/analyze  — run Tier 2 (statistical) + Tier 3 (ML) analysis
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -23,14 +24,31 @@ log = logging.getLogger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Loading Tier 2 resources (word frequencies, NLTK data) …")
-    load_resources()
-    log.info("Tier 2 resources ready.")
+    """
+    Bind the HTTP server immediately; load Tier 2 + ML in the background.
 
-    log.info("Downloading / loading ML models (first run may take a few minutes) …")
-    load_models()
-    log.info("Models ready — server accepting requests.")
+    If models load inside startup before Uvicorn listens, platform health checks
+    hit a closed port and deployments fail with "service unavailable".
+    """
+
+    async def _load_all():
+        try:
+            log.info("Loading Tier 2 resources (word frequencies, NLTK data) …")
+            await asyncio.to_thread(load_resources)
+            log.info("Tier 2 resources ready.")
+            log.info("Downloading / loading ML models (first run may take several minutes) …")
+            await asyncio.to_thread(load_models)
+            log.info("Models ready.")
+        except Exception:
+            log.exception("Background resource loading failed")
+
+    app.state.load_task = asyncio.create_task(_load_all())
     yield
+    app.state.load_task.cancel()
+    try:
+        await app.state.load_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
