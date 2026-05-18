@@ -1,8 +1,10 @@
+# PyTorch CPU wheels live on this index; keep this line first so pip resolves `torch` correctly.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 fastapi
 uvicorn[standard]
 transformers
 pydantic
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
+torch==2.5.1+cpu
 nltk
 taaled
